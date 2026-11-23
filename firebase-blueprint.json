@@ -1,0 +1,480 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private passenger account profile and safety preferences",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 120
+        },
+        "defaultCity": {
+          "type": "string",
+          "enum": ["bishkek", "osh", "jalal-abad", "cholpon-ata", "karakol", "naryn", "talas", "batken", "intercity"]
+        },
+        "homeAddress": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "workAddress": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "totalCompletedRides": {
+          "type": "number"
+        },
+        "safetyRating": {
+          "type": "number"
+        },
+        "plusPointsBalance": {
+          "type": "number"
+        },
+        "safetyPinEnabled": {
+          "type": "boolean"
+        },
+        "isAudioRecordingEnabled": {
+          "type": "boolean"
+        },
+        "autoShareTripWithContact": {
+          "type": "boolean"
+        },
+        "emergencyContactName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "emergencyContactPhone": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "name", "email", "defaultCity", "createdAt", "updatedAt"]
+    },
+    "SavedCard": {
+      "title": "SavedCard",
+      "description": "Masked Kyrgyz bank card linked to a passenger account",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "cardNumber": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 32
+        },
+        "expiry": {
+          "type": "string",
+          "maxLength": 8
+        },
+        "cardholderName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "cardType": {
+          "type": "string",
+          "enum": ["elkart", "visa", "mastercard", "mbank"]
+        },
+        "bankName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "isDefault": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "cardNumber", "expiry", "cardholderName", "cardType", "bankName", "isDefault", "createdAt"]
+    },
+    "TripHistoryRecord": {
+      "title": "TripHistoryRecord",
+      "description": "Completed trip record stored in a passenger subcollection",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "cityName": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "pickup": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "destination": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "tariffName": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "carInfo": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "fare": {
+          "type": "number"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "rating": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "date", "cityName", "pickup", "destination", "tariffName", "carInfo", "fare", "paymentMethod", "createdAt"]
+    },
+    "DriverRecord": {
+      "title": "DriverRecord",
+      "description": "Private driver account, documents, and verification state",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "city": {
+          "type": "string",
+          "enum": ["bishkek", "osh", "jalal-abad", "cholpon-ata", "karakol", "naryn", "talas", "batken", "intercity"]
+        },
+        "carBrand": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "carModel": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "carColor": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "carPlate": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "carYear": {
+          "type": "number"
+        },
+        "licenseNumber": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "gender": {
+          "type": "string",
+          "enum": ["male", "female"]
+        },
+        "verificationStatus": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "isOnline": {
+          "type": "boolean"
+        },
+        "rating": {
+          "type": "number"
+        },
+        "totalTrips": {
+          "type": "number"
+        },
+        "balanceKgs": {
+          "type": "number"
+        },
+        "payoutMbankPhone": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "name", "phone", "city", "carBrand", "carModel", "carPlate", "licenseNumber", "gender", "verificationStatus", "isOnline", "createdAt", "updatedAt"]
+    },
+    "LiveRide": {
+      "title": "LiveRide",
+      "description": "Real-time ride request synced between passenger, driver, and dispatcher",
+      "type": "object",
+      "properties": {
+        "passengerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "passengerName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "driverUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "driverName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "driverCarModel": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "driverCarPlate": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "driverRating": {
+          "type": "number"
+        },
+        "cityId": {
+          "type": "string",
+          "enum": ["bishkek", "osh", "jalal-abad", "cholpon-ata", "karakol", "naryn", "talas", "batken", "intercity"]
+        },
+        "pickupName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "pickupLat": {
+          "type": "number"
+        },
+        "pickupLng": {
+          "type": "number"
+        },
+        "destName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "destLat": {
+          "type": "number"
+        },
+        "destLng": {
+          "type": "number"
+        },
+        "tariffId": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "tariffName": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["mbank", "elkart", "odengi", "optima", "cash"]
+        },
+        "pricingMode": {
+          "type": "string",
+          "enum": ["fixed", "bidding"]
+        },
+        "fare": {
+          "type": "number"
+        },
+        "offeredFare": {
+          "type": "number"
+        },
+        "distanceKm": {
+          "type": "number"
+        },
+        "estimatedMinutes": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["searching", "bidding", "driver_assigned", "driver_arrived", "in_trip", "completed", "cancelled"]
+        },
+        "driverLat": {
+          "type": "number"
+        },
+        "driverLng": {
+          "type": "number"
+        },
+        "safetyPin": {
+          "type": "string",
+          "maxLength": 6
+        },
+        "shareCode": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "intercitySeats": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["passengerUid", "passengerName", "cityId", "pickupName", "pickupLat", "pickupLng", "destName", "destLat", "destLng", "tariffId", "tariffName", "paymentMethod", "pricingMode", "fare", "distanceKm", "estimatedMinutes", "status", "createdAt", "updatedAt"]
+    },
+    "RideBid": {
+      "title": "RideBid",
+      "description": "Driver counter-offer bid on a bidding-mode ride",
+      "type": "object",
+      "properties": {
+        "rideId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "passengerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "driverUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "driverName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "carModel": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "carPlate": {
+          "type": "string",
+          "maxLength": 24
+        },
+        "rating": {
+          "type": "number"
+        },
+        "etaMinutes": {
+          "type": "number"
+        },
+        "price": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "declined"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["rideId", "passengerUid", "driverUid", "driverName", "carModel", "carPlate", "rating", "etaMinutes", "price", "status", "createdAt"]
+    },
+    "FleetCitySetting": {
+      "title": "FleetCitySetting",
+      "description": "Dispatcher city tariff multiplier and surge control configuration",
+      "type": "object",
+      "properties": {
+        "cityId": {
+          "type": "string",
+          "enum": ["bishkek", "osh", "jalal-abad", "cholpon-ata", "karakol", "naryn", "talas", "batken", "intercity"]
+        },
+        "surgeMultiplier": {
+          "type": "number"
+        },
+        "commissionPercent": {
+          "type": "number"
+        },
+        "ladiesModeEnabled": {
+          "type": "boolean"
+        },
+        "biddingEnabled": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["cityId", "surgeMultiplier", "commissionPercent", "ladiesModeEnabled", "biddingEnabled", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private passenger profile and safety settings"
+    },
+    "/users/{userId}/cards/{cardId}": {
+      "schema": { "$ref": "#/entities/SavedCard" },
+      "description": "Masked Kyrgyz bank cards owned by the user"
+    },
+    "/users/{userId}/trips/{tripId}": {
+      "schema": { "$ref": "#/entities/TripHistoryRecord" },
+      "description": "Completed trip history owned by the user"
+    },
+    "/drivers/{driverId}": {
+      "schema": { "$ref": "#/entities/DriverRecord" },
+      "description": "Private driver registration, documents, and verification state"
+    },
+    "/rides/{rideId}": {
+      "schema": { "$ref": "#/entities/LiveRide" },
+      "description": "Live ride orders synced between passengers, drivers, and dispatchers"
+    },
+    "/rides/{rideId}/bids/{bidId}": {
+      "schema": { "$ref": "#/entities/RideBid" },
+      "description": "Driver counter-offer bids for inDrive-style bidding rides"
+    },
+    "/fleet_settings/{cityId}": {
+      "schema": { "$ref": "#/entities/FleetCitySetting" },
+      "description": "Dispatcher-managed city surge, commission, and feature toggles"
+    }
+  }
+}

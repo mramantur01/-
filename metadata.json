@@ -1,0 +1,7 @@
+{
+  "name": "KG Taxi - Такси Кыргызстан",
+  "description": "Сервис заказа такси и поездок по городам Кыргызстана: Бишкек, Ош, Жалал-Абад, Чолпон-Ата, Каракол и междугородние маршруты с оплатой MBank, картой и наличными.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

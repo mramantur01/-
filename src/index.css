@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Subtle clean scrollbar */
+.uber-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.uber-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.uber-scroll::-webkit-scrollbar-thumb {
+  background: #d4d4d4;
+  border-radius: 9999px;
+}
+
+.uber-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a3a3a3;
+}
