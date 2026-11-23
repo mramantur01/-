@@ -28,7 +28,7 @@ import {
 
 declare const __GOOGLE_MAPS_API_KEY__: string | undefined;
 
-const GOOGLE_MAPS_API_KEY =
+export const GOOGLE_MAPS_API_KEY =
   (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) ||
   (typeof __GOOGLE_MAPS_API_KEY__ !== 'undefined' ? __GOOGLE_MAPS_API_KEY__ : '') ||
   '';

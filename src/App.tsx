@@ -59,7 +59,8 @@ import {
 import { fetchRoadRoute } from './services/geoService';
 import { playRideChime } from './utils/soundEffects';
 import { TopBar } from './components/Navbar/TopBar';
-import { RealCityMap } from './components/Map/RealCityMap';
+import { RealCityMap, GOOGLE_MAPS_API_KEY } from './components/Map/RealCityMap';
+import { OsmCityMap } from './components/Map/OsmCityMap';
 import { TwoGisEmbed } from './components/Map/TwoGisEmbed';
 import { BookingForm } from './components/Booking/BookingForm';
 import { BiddingOffersPanel } from './components/Booking/BiddingOffersPanel';
@@ -1660,6 +1661,15 @@ export default function App() {
             <section className="flex-1 relative h-[calc(100vh-64px)] w-full">
               {activeView === '2gis' ? (
                 <TwoGisEmbed onSelectAddress={handleSelectFrom2Gis} />
+              ) : !GOOGLE_MAPS_API_KEY ? (
+                <OsmCityMap
+                  currentCity={currentCity}
+                  tripState={tripState}
+                  routeCoordinates={routeCoordinates}
+                  onSelectCoords={handleRealCoordsSelect}
+                  selectionMode={selectionMode}
+                  onSwitchTo2Gis={() => setActiveView('2gis')}
+                />
               ) : (
                 <RealCityMap
                   currentCity={currentCity}
