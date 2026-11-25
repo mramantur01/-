@@ -1,16 +1,25 @@
+/**
+ * The website uses the SAME Firestore database as the KG Taxi Android app.
+ * All rides are written in the app's format (passengerId, dropoffAddress, priceSom,
+ * status SEARCHING/ASSIGNED/...), so orders from the site reach drivers in the app.
+ * The functions keep their old names so the rest of the site works unchanged.
+ */
 import {
   collection,
   doc,
   getDoc,
   setDoc,
   updateDoc,
-  deleteDoc,
   onSnapshot,
   query,
   where,
-  serverTimestamp
+  orderBy,
+  limit,
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
-import { db, OperationType, handleFirestoreError } from '../firebase';
+import { db } from '../firebase';
+import { CITIES } from '../data/kyrgyzstanData';
 import {
   PassengerProfile,
   SavedCard,
@@ -23,574 +32,352 @@ import {
 } from '../types/taxi';
 
 const clampStr = (val: string | undefined, max: number, fallback = ''): string =>
-  (val || fallback).trim().slice(0, max);
+  ((val || fallback) + '').trim().slice(0, max);
 
-const safeId = (prefix: string): string =>
-  `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`.replace(/[^a-zA-Z0-9_-]/g, '');
+function logError(where: string, error: unknown) {
+  console.warn(`[KG Taxi] ${where}:`, (error as Error)?.message || error);
+}
 
-// ==================== USER PROFILE ====================
+// ---------- mapping between the site and the app ----------
+
+export const cityNameRu = (id: CityId | string): string =>
+  CITIES.find((c) => c.id === id)?.name.ru || 'Бишкек';
+
+const cityIdFromName = (name: string): CityId =>
+  (CITIES.find((c) => c.name.ru === name)?.id || 'bishkek') as CityId;
+
+/** Site tariff id -> app tariff id (the app filters orders by these). */
+const APP_TARIFF: Record<string, string> = {
+  economy: 'econom',
+  together: 'econom',
+  green: 'green_ev',
+  ladies: 'lady',
+  comfort: 'comfort',
+  comfort_plus: 'comfort_plus',
+  business: 'business',
+  hourly: 'hourly',
+  minivan: 'minivan',
+  cargo: 'cargo_15',
+  delivery: 'courier'
+};
+
+const STATUS_FROM_APP: Record<string, LiveRideDoc['status']> = {
+  SEARCHING: 'searching',
+  BOOKED: 'driver_assigned',
+  ASSIGNED: 'driver_assigned',
+  ARRIVED: 'driver_arrived',
+  IN_PROGRESS: 'in_trip',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled'
+};
+
+const STATUS_TO_APP: Record<string, string> = {
+  driver_arrived: 'ARRIVED',
+  in_trip: 'IN_PROGRESS',
+  completed: 'COMPLETED'
+};
+
+/** App ride document -> site LiveRideDoc. */
+export function rideFromApp(id: string, d: Record<string, any>): LiveRideDoc {
+  const pin = String(d.comment || '').match(/PIN (\d{4})/)?.[1];
+  return {
+    id,
+    passengerUid: d.passengerId || '',
+    passengerName: d.passengerName || 'Пассажир',
+    driverUid: d.driverId || '',
+    driverName: d.driverName || undefined,
+    driverCarModel: d.driverCar || undefined,
+    driverCarPlate: d.driverPlate || undefined,
+    driverRating: typeof d.driverRatingAvg === 'number' && d.driverRatingAvg > 0 ? d.driverRatingAvg : undefined,
+    cityId: cityIdFromName(d.city || ''),
+    pickupName: d.pickupAddress || '',
+    pickupLat: Number(d.pickupLat) || 0,
+    pickupLng: Number(d.pickupLng) || 0,
+    destName: d.dropoffAddress || '',
+    destLat: Number(d.dropoffLat) || 0,
+    destLng: Number(d.dropoffLng) || 0,
+    tariffId: (Object.keys(APP_TARIFF).find((k) => APP_TARIFF[k] === d.tariffId) || 'economy') as any,
+    tariffName: d.tariffName || (d.serviceType === 'INTERCITY' ? 'Межгород' : 'Такси'),
+    paymentMethod: d.paymentMethod === 'CARD' ? 'elkart' : 'cash',
+    pricingMode: 'fixed' as any,
+    fare: Number(d.priceSom) || 0,
+    distanceKm: 0,
+    estimatedMinutes: 0,
+    status: STATUS_FROM_APP[d.status] || 'searching',
+    driverLat: typeof d.driverLat === 'number' ? d.driverLat : undefined,
+    driverLng: typeof d.driverLng === 'number' ? d.driverLng : undefined,
+    safetyPin: pin,
+    shareCode: id.slice(-8).toUpperCase()
+  };
+}
+
+// ==================== USER PROFILE (users/{uid}, app format) ====================
 export async function syncUserProfileOnLogin(
   uid: string,
   name: string,
   email: string,
   fallbackProfile: PassengerProfile
 ): Promise<PassengerProfile> {
-  const path = `users/${uid}`;
   try {
     const ref = doc(db, 'users', uid);
     const snap = await getDoc(ref);
     if (snap.exists()) {
-      const data = snap.data();
+      const d = snap.data();
       return {
         ...fallbackProfile,
         id: uid,
-        name: data.name || name,
-        phone: data.phone || fallbackProfile.phone,
-        email: data.email || email,
-        defaultCity: data.defaultCity || fallbackProfile.defaultCity,
-        homeAddress: data.homeAddress || '',
-        workAddress: data.workAddress || '',
-        totalCompletedRides: typeof data.totalCompletedRides === 'number' ? data.totalCompletedRides : 0,
-        safetyRating: typeof data.safetyRating === 'number' ? data.safetyRating : 5.0,
-        plusPointsBalance: typeof data.plusPointsBalance === 'number' ? data.plusPointsBalance : 240,
-        safetySettings: {
-          emergencyContactName: data.emergencyContactName || fallbackProfile.safetySettings.emergencyContactName,
-          emergencyContactPhone: data.emergencyContactPhone || fallbackProfile.safetySettings.emergencyContactPhone,
-          safetyPinEnabled: data.safetyPinEnabled ?? true,
-          isAudioRecordingEnabled: data.isAudioRecordingEnabled ?? true,
-          autoShareTripWithContact: data.autoShareTripWithContact ?? true
-        }
+        name: d.displayName || name,
+        phone: d.phone || fallbackProfile.phone,
+        email: d.email || email,
+        homeAddress: d.homeAddress || '',
+        workAddress: d.workAddress || '',
+        defaultCity: cityIdFromName(d.preferredCity || 'Бишкек')
       };
     }
-
     await setDoc(ref, {
-      uid,
-      name: clampStr(name, 100, 'Пассажир KG'),
-      phone: clampStr(fallbackProfile.phone, 32),
-      email: clampStr(email, 120, 'user@kgtaxi.kg'),
-      defaultCity: fallbackProfile.defaultCity || 'bishkek',
+      userId: uid,
+      displayName: clampStr(name, 80, 'Пассажир'),
+      phone: clampStr(fallbackProfile.phone, 30),
+      email: clampStr(email, 120),
       homeAddress: clampStr(fallbackProfile.homeAddress, 160),
       workAddress: clampStr(fallbackProfile.workAddress, 160),
-      totalCompletedRides: fallbackProfile.totalCompletedRides || 0,
-      safetyRating: 5.0,
-      plusPointsBalance: fallbackProfile.plusPointsBalance ?? 240,
-      safetyPinEnabled: fallbackProfile.safetySettings.safetyPinEnabled,
-      isAudioRecordingEnabled: fallbackProfile.safetySettings.isAudioRecordingEnabled,
-      autoShareTripWithContact: fallbackProfile.safetySettings.autoShareTripWithContact,
-      emergencyContactName: clampStr(fallbackProfile.safetySettings.emergencyContactName, 80),
-      emergencyContactPhone: clampStr(fallbackProfile.safetySettings.emergencyContactPhone, 32),
+      paymentMethod: 'CASH',
+      kgOneActive: false,
+      businessProfileActive: false,
+      bonusPoints: 0,
+      preferredCity: cityNameRu(fallbackProfile.defaultCity || 'bishkek'),
+      language: 'RU',
+      darkTheme: false,
+      soundEnabled: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
-
-    return {
-      ...fallbackProfile,
-      id: uid,
-      name: clampStr(name, 100, 'Пассажир KG'),
-      email: clampStr(email, 120)
-    };
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
+    logError('profile', error);
   }
+  return { ...fallbackProfile, id: uid, name: clampStr(name, 80, 'Пассажир'), email };
 }
 
 export async function updateUserProfileInFirestore(uid: string, profile: PassengerProfile): Promise<void> {
-  const path = `users/${uid}`;
   try {
     await updateDoc(doc(db, 'users', uid), {
-      name: clampStr(profile.name, 100, 'Пассажир KG'),
-      phone: clampStr(profile.phone, 32),
-      defaultCity: profile.defaultCity,
+      displayName: clampStr(profile.name, 80, 'Пассажир'),
+      phone: clampStr(profile.phone, 30),
       homeAddress: clampStr(profile.homeAddress, 160),
       workAddress: clampStr(profile.workAddress, 160),
-      totalCompletedRides: Math.max(0, Math.min(100000, profile.totalCompletedRides || 0)),
-      plusPointsBalance: Math.max(0, Math.min(1000000, profile.plusPointsBalance || 0)),
-      safetyPinEnabled: Boolean(profile.safetySettings.safetyPinEnabled),
-      isAudioRecordingEnabled: Boolean(profile.safetySettings.isAudioRecordingEnabled),
-      autoShareTripWithContact: Boolean(profile.safetySettings.autoShareTripWithContact),
-      emergencyContactName: clampStr(profile.safetySettings.emergencyContactName, 80),
-      emergencyContactPhone: clampStr(profile.safetySettings.emergencyContactPhone, 32),
+      preferredCity: cityNameRu(profile.defaultCity || 'bishkek'),
       updatedAt: serverTimestamp()
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
+    logError('profile update', error);
   }
 }
 
-// ==================== SAVED CARDS ====================
-export function subscribeUserCards(uid: string, onData: (cards: SavedCard[]) => void) {
-  const path = `users/${uid}/cards`;
-  const q = query(collection(db, 'users', uid, 'cards'), where('uid', '==', uid));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const cards: SavedCard[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          cardNumber: data.cardNumber,
-          expiry: data.expiry,
-          cardholderName: data.cardholderName,
-          cardType: data.cardType,
-          bankName: data.bankName,
-          isDefault: Boolean(data.isDefault)
-        };
-      });
-      onData(cards);
-    },
-    (error) => handleFirestoreError(error, OperationType.LIST, path)
-  );
+// ==================== SAVED CARDS (online payments are not live yet) ====================
+export function subscribeUserCards(_uid: string, onData: (cards: SavedCard[]) => void) {
+  onData([]);
+  return () => {};
 }
+export async function addUserCardToFirestore(_uid: string, _card: SavedCard): Promise<void> {}
+export async function deleteUserCardFromFirestore(_uid: string, _cardId: string): Promise<void> {}
 
-export async function addUserCardToFirestore(uid: string, card: SavedCard): Promise<void> {
-  const cardId = safeId('card');
-  const path = `users/${uid}/cards/${cardId}`;
-  try {
-    await setDoc(doc(db, 'users', uid, 'cards', cardId), {
-      uid,
-      cardNumber: clampStr(card.cardNumber, 32),
-      expiry: clampStr(card.expiry, 8, '12/28'),
-      cardholderName: clampStr(card.cardholderName, 80, 'KG PASSENGER'),
-      cardType: card.cardType,
-      bankName: clampStr(card.bankName, 80, 'MBank'),
-      isDefault: Boolean(card.isDefault),
-      createdAt: serverTimestamp()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
-}
-
-export async function deleteUserCardFromFirestore(uid: string, cardId: string): Promise<void> {
-  const path = `users/${uid}/cards/${cardId}`;
-  try {
-    await deleteDoc(doc(db, 'users', uid, 'cards', cardId));
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, path);
-  }
-}
-
-// ==================== TRIP HISTORY ====================
+// ==================== TRIP HISTORY = my rides in the shared rides collection ====================
 export function subscribeUserTripHistory(uid: string, onData: (items: TripHistoryItem[]) => void) {
-  const path = `users/${uid}/trips`;
-  const q = query(collection(db, 'users', uid, 'trips'), where('uid', '==', uid));
+  const q = query(collection(db, 'rides'), where('passengerId', '==', uid), orderBy('createdAt', 'desc'), limit(100));
   return onSnapshot(
     q,
     (snap) => {
-      const items: TripHistoryItem[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          date: data.date,
-          cityName: data.cityName,
-          pickup: data.pickup,
-          destination: data.destination,
-          tariffName: data.tariffName,
-          carInfo: data.carInfo,
-          fare: Number(data.fare) || 0,
-          paymentMethod: data.paymentMethod,
-          rating: data.rating
-        };
-      });
-      onData(items);
+      onData(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as any))
+          .filter((r) => r.status === 'COMPLETED')
+          .map((r) => ({
+            id: r.id,
+            date: r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('ru-RU') : '',
+            cityName: r.city || '',
+            pickup: r.pickupAddress || '',
+            destination: r.dropoffAddress || '',
+            tariffName: r.tariffName || 'Такси',
+            carInfo: [r.driverCar, r.driverPlate].filter(Boolean).join(' • '),
+            fare: Number(r.priceSom) || 0,
+            paymentMethod: r.paymentMethod === 'CARD' ? 'Карта' : 'Наличные / QR',
+            rating: r.driverRating
+          }))
+      );
     },
-    (error) => handleFirestoreError(error, OperationType.LIST, path)
+    (error) => logError('history', error)
   );
 }
 
-export async function saveTripHistoryToFirestore(uid: string, item: TripHistoryItem): Promise<void> {
-  const tripId = safeId('trip');
-  const path = `users/${uid}/trips/${tripId}`;
-  try {
-    await setDoc(doc(db, 'users', uid, 'trips', tripId), {
-      uid,
-      date: clampStr(item.date, 40, 'Сегодня'),
-      cityName: clampStr(item.cityName, 60, 'Бишкек'),
-      pickup: clampStr(item.pickup, 160),
-      destination: clampStr(item.destination, 160),
-      tariffName: clampStr(item.tariffName, 60),
-      carInfo: clampStr(item.carInfo, 100),
-      fare: Math.max(0, Math.min(500000, Number(item.fare) || 0)),
-      paymentMethod: clampStr(item.paymentMethod, 40),
-      rating: Math.max(1, Math.min(5, Number(item.rating) || 5)),
-      createdAt: serverTimestamp()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
-}
+/** History is built from rides; nothing extra to save. */
+export async function saveTripHistoryToFirestore(_uid: string, _item: TripHistoryItem): Promise<void> {}
 
-// ==================== LIVE RIDES (PASSENGER <-> DRIVER <-> DISPATCHER) ====================
-export async function createLiveRideInFirestore(
-  ride: Omit<LiveRideDoc, 'id'>
-): Promise<string> {
-  const rideId = safeId('ride');
-  const path = `rides/${rideId}`;
-  try {
-    await setDoc(doc(db, 'rides', rideId), {
-      passengerUid: ride.passengerUid,
-      passengerName: clampStr(ride.passengerName, 80, 'Пассажир'),
-      driverUid: '',
-      cityId: ride.cityId,
-      pickupName: clampStr(ride.pickupName, 160),
-      pickupLat: Math.max(38, Math.min(45, ride.pickupLat)),
-      pickupLng: Math.max(68, Math.min(82, ride.pickupLng)),
-      destName: clampStr(ride.destName, 160),
-      destLat: Math.max(38, Math.min(45, ride.destLat)),
-      destLng: Math.max(68, Math.min(82, ride.destLng)),
-      tariffId: clampStr(ride.tariffId, 32, 'economy'),
-      tariffName: clampStr(ride.tariffName, 60, 'Эконом'),
-      paymentMethod: ride.paymentMethod,
-      pricingMode: ride.pricingMode,
-      fare: Math.max(30, Math.min(500000, Math.round(ride.fare))),
-      ...(ride.offeredFare ? { offeredFare: Math.max(30, Math.min(500000, Math.round(ride.offeredFare))) } : {}),
-      distanceKm: Math.max(0, Math.min(2500, Number(ride.distanceKm) || 1)),
-      estimatedMinutes: Math.max(1, Math.min(3000, Math.round(ride.estimatedMinutes) || 5)),
-      status: ride.status,
-      safetyPin: clampStr(ride.safetyPin || '7429', 6),
-      shareCode: clampStr(ride.shareCode || rideId.slice(-8).toUpperCase(), 24),
-      ...(ride.intercitySeats ? { intercitySeats: clampStr(ride.intercitySeats, 40) } : {}),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    return rideId;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
+// ==================== LIVE RIDES ====================
+export async function createLiveRideInFirestore(ride: Omit<LiveRideDoc, 'id'>): Promise<string> {
+  const ref = doc(collection(db, 'rides'));
+  const isIntercity = ride.tariffId === ('intercity_seat' as any);
+  const pin = clampStr(ride.safetyPin, 4) || String(1000 + Math.floor(Math.random() * 9000));
+  const payload: Record<string, any> = {
+    passengerId: ride.passengerUid,
+    passengerName: clampStr(ride.passengerName, 80, 'Пассажир'),
+    status: 'SEARCHING',
+    driverId: null,
+    serviceType: isIntercity ? 'INTERCITY' : 'TAXI',
+    city: cityNameRu(ride.cityId),
+    pickupAddress: clampStr(ride.pickupName, 200, 'Точка на карте'),
+    dropoffAddress: clampStr(ride.destName, 200, 'Точка на карте'),
+    pickupLat: Number(ride.pickupLat),
+    pickupLng: Number(ride.pickupLng),
+    dropoffLat: Number(ride.destLat),
+    dropoffLng: Number(ride.destLng),
+    priceSom: Math.max(1, Math.min(100000, Math.round(ride.fare))),
+    paymentMethod: ride.paymentMethod === 'cash' ? 'CASH' : 'CASH',
+    comment: `Заказ с сайта • PIN ${pin}`,
+    tariffName: clampStr(ride.tariffName, 30, 'Такси'),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  if (!isIntercity) payload.tariffId = APP_TARIFF[ride.tariffId] || 'econom';
+  if (isIntercity) payload.seats = 1;
+  await setDoc(ref, payload);
+  return ref.id;
 }
 
 export function subscribeToSingleRide(rideId: string, onData: (ride: LiveRideDoc | null) => void) {
-  const path = `rides/${rideId}`;
   return onSnapshot(
     doc(db, 'rides', rideId),
-    (snap) => {
-      if (!snap.exists()) {
-        onData(null);
-        return;
-      }
-      onData({ id: snap.id, ...(snap.data() as Omit<LiveRideDoc, 'id'>) });
-    },
-    (error) => handleFirestoreError(error, OperationType.GET, path)
+    (snap) => onData(snap.exists() ? rideFromApp(snap.id, snap.data()) : null),
+    (error) => logError('ride', error)
   );
 }
 
+/** Open orders (drivers only, by the database rules). */
 export function subscribeToOpenRides(onData: (rides: LiveRideDoc[]) => void) {
-  const path = 'rides';
-  const q = query(collection(db, 'rides'), where('status', 'in', ['searching', 'bidding']));
+  const q = query(collection(db, 'rides'), where('status', '==', 'SEARCHING'), limit(50));
   return onSnapshot(
     q,
-    (snap) => {
-      const rides = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<LiveRideDoc, 'id'>)
-      }));
-      onData(rides);
-    },
-    (error) => handleFirestoreError(error, OperationType.LIST, path)
+    (snap) => onData(snap.docs.map((d) => rideFromApp(d.id, d.data()))),
+    () => onData([])
   );
 }
 
+/** All active rides (dispatchers and the owner). */
 export function subscribeToAllRidesAdmin(onData: (rides: LiveRideDoc[]) => void) {
-  const path = 'rides';
+  const q = query(collection(db, 'rides'), orderBy('createdAt', 'desc'), limit(200));
   return onSnapshot(
-    collection(db, 'rides'),
-    (snap) => {
-      const rides = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<LiveRideDoc, 'id'>)
-      }));
-      onData(rides);
-    },
-    (error) => handleFirestoreError(error, OperationType.LIST, path)
+    q,
+    (snap) => onData(snap.docs.map((d) => rideFromApp(d.id, d.data()))),
+    (error) => logError('all rides', error)
   );
 }
 
+/** Drivers take orders in the KG Taxi app (registration, photo check, PIN). */
 export async function acceptLiveRideAsDriver(
-  rideId: string,
-  driverUid: string,
-  driverProfile: DriverProfile,
-  finalFare: number,
-  driverLat: number,
-  driverLng: number
+  _rideId: string, _driverUid: string, _driverProfile: DriverProfile, _finalFare: number, _lat: number, _lng: number
 ): Promise<void> {
-  const path = `rides/${rideId}`;
-  try {
-    await updateDoc(doc(db, 'rides', rideId), {
-      driverUid,
-      driverName: clampStr(driverProfile.name, 80),
-      driverCarModel: clampStr(`${driverProfile.carBrand} ${driverProfile.carModel}`, 80),
-      driverCarPlate: clampStr(driverProfile.carPlate, 24),
-      driverRating: Math.max(1, Math.min(5, driverProfile.rating || 4.95)),
-      fare: Math.max(30, Math.min(500000, Math.round(finalFare))),
-      status: 'driver_assigned',
-      driverLat: Math.max(38, Math.min(45, driverLat)),
-      driverLng: Math.max(68, Math.min(82, driverLng)),
-      updatedAt: serverTimestamp()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
+  throw new Error('Водители принимают заказы в приложении KG Taxi');
 }
 
 export async function updateLiveRideStatusByDriver(
   rideId: string,
-  status: 'driver_assigned' | 'driver_arrived' | 'in_trip' | 'completed',
-  driverLat?: number,
-  driverLng?: number
+  status: 'driver_assigned' | 'driver_arrived' | 'in_trip' | 'completed'
 ): Promise<void> {
-  const path = `rides/${rideId}`;
-  try {
-    const payload: Record<string, unknown> = {
-      status,
-      updatedAt: serverTimestamp()
-    };
-    if (typeof driverLat === 'number' && typeof driverLng === 'number') {
-      payload.driverLat = Math.max(38, Math.min(45, driverLat));
-      payload.driverLng = Math.max(68, Math.min(82, driverLng));
-    }
-    await updateDoc(doc(db, 'rides', rideId), payload);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
+  const app = STATUS_TO_APP[status];
+  if (!app) return;
+  await updateDoc(doc(db, 'rides', rideId), { status: app, updatedAt: serverTimestamp() });
 }
 
-export async function cancelLiveRideByPassenger(rideId: string): Promise<void> {
-  const path = `rides/${rideId}`;
-  try {
-    await updateDoc(doc(db, 'rides', rideId), {
-      status: 'cancelled',
-      updatedAt: serverTimestamp()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
+export async function cancelLiveRideByPassenger(rideId: string, reason = 'Отменил на сайте'): Promise<void> {
+  await updateDoc(doc(db, 'rides', rideId), {
+    status: 'CANCELLED',
+    cancelReason: reason.slice(0, 100),
+    updatedAt: serverTimestamp()
+  });
 }
 
-export async function acceptBidOnRideByPassenger(
-  rideId: string,
-  bid: BidOffer
-): Promise<void> {
-  const path = `rides/${rideId}`;
-  try {
-    await updateDoc(doc(db, 'rides', rideId), {
-      status: 'driver_assigned',
-      fare: Math.max(30, Math.min(500000, Math.round(bid.price))),
-      driverUid: clampStr(bid.driverUid, 128),
-      driverName: clampStr(bid.driverName, 80),
-      driverCarModel: clampStr(bid.carModel, 80),
-      driverCarPlate: clampStr(bid.carPlate, 24),
-      driverRating: Math.max(1, Math.min(5, bid.rating || 4.95)),
-      updatedAt: serverTimestamp()
-    });
-    if (bid.isLiveFirestore) {
-      await updateDoc(doc(db, 'rides', rideId, 'bids', bid.id), {
-        status: 'accepted'
-      });
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
-}
-
-// ==================== LIVE BIDS ====================
+// ==================== BIDDING ("своя цена") is turned off: prices are set by the owner ====================
+export async function acceptBidOnRideByPassenger(_rideId: string, _bid: BidOffer): Promise<void> {}
 export async function submitDriverBidInFirestore(
-  rideId: string,
-  passengerUid: string,
-  driverUid: string,
-  driverProfile: DriverProfile,
-  price: number
-): Promise<void> {
-  const bidId = safeId('bid');
-  const path = `rides/${rideId}/bids/${bidId}`;
-  try {
-    await setDoc(doc(db, 'rides', rideId, 'bids', bidId), {
-      rideId,
-      passengerUid,
-      driverUid,
-      driverName: clampStr(driverProfile.name, 80),
-      carModel: clampStr(`${driverProfile.carBrand} ${driverProfile.carModel}`, 80),
-      carPlate: clampStr(driverProfile.carPlate, 24),
-      rating: Math.max(1, Math.min(5, driverProfile.rating || 4.95)),
-      etaMinutes: 3,
-      price: Math.max(30, Math.min(500000, Math.round(price))),
-      status: 'pending',
-      createdAt: serverTimestamp()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
-  }
+  _rideId: string, _passengerUid: string, _driverUid: string, _profile: DriverProfile, _price: number
+): Promise<void> {}
+export function subscribeToRideBids(_rideId: string, _uid: string, onData: (bids: BidOffer[]) => void) {
+  onData([]);
+  return () => {};
 }
 
-export function subscribeToRideBids(
-  rideId: string,
-  passengerUid: string,
-  onData: (bids: BidOffer[]) => void
-) {
-  const path = `rides/${rideId}/bids`;
-  const q = query(
-    collection(db, 'rides', rideId, 'bids'),
-    where('passengerUid', '==', passengerUid)
-  );
-  return onSnapshot(
-    q,
-    (snap) => {
-      const bids: BidOffer[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          rideId: data.rideId,
-          driverUid: data.driverUid,
-          driverName: data.driverName,
-          carModel: data.carModel,
-          carPlate: data.carPlate,
-          rating: Number(data.rating) || 4.9,
-          etaMinutes: Number(data.etaMinutes) || 3,
-          price: Number(data.price) || 150,
-          status: data.status,
-          isLiveFirestore: true
-        };
-      });
-      onData(bids);
-    },
-    (error) => handleFirestoreError(error, OperationType.LIST, path)
-  );
-}
-
-// ==================== DRIVER APPLICATIONS & DISPATCHER ====================
-export async function submitDriverApplicationInFirestore(
-  uid: string,
-  drv: DriverProfile
-): Promise<void> {
-  const path = `drivers/${uid}`;
-  try {
-    const ref = doc(db, 'drivers', uid);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      await updateDoc(ref, {
-        name: clampStr(drv.name, 100),
-        phone: clampStr(drv.phone, 32),
-        city: drv.city,
-        carBrand: clampStr(drv.carBrand, 40),
-        carModel: clampStr(drv.carModel, 60),
-        carColor: clampStr(drv.carColor, 40),
-        carPlate: clampStr(drv.carPlate, 24),
-        carYear: Math.max(1990, Math.min(2030, Number(drv.carYear) || 2020)),
-        gender: drv.gender || 'male',
-        isOnline: Boolean(drv.isOnline),
-        payoutMbankPhone: clampStr(drv.payoutMbankPhone, 32),
-        updatedAt: serverTimestamp()
-      });
-    } else {
-      await setDoc(ref, {
-        uid,
-        name: clampStr(drv.name, 100),
-        phone: clampStr(drv.phone, 32),
-        city: drv.city,
-        carBrand: clampStr(drv.carBrand, 40),
-        carModel: clampStr(drv.carModel, 60),
-        carColor: clampStr(drv.carColor, 40),
-        carPlate: clampStr(drv.carPlate, 24),
-        carYear: Math.max(1990, Math.min(2030, Number(drv.carYear) || 2020)),
-        licenseNumber: clampStr(drv.licenseNumber, 40, 'KG 00000000'),
-        gender: drv.gender || 'male',
-        verificationStatus: 'pending',
-        isOnline: false,
-        rating: 5.0,
-        totalTrips: 0,
-        balanceKgs: 0,
-        payoutMbankPhone: clampStr(drv.payoutMbankPhone, 32),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
+// ==================== DRIVERS ====================
+/** Driver registration needs documents and a photo check: it is done in the app. */
+export async function submitDriverApplicationInFirestore(_uid: string, _drv: DriverProfile): Promise<void> {
+  throw new Error('Регистрация водителя — в приложении KG Taxi: паспорт, права, ОСАГО и фотоконтроль.');
 }
 
 export function subscribeToAllDriversAdmin(onData: (drivers: DriverProfile[]) => void) {
-  const path = 'drivers';
+  const q = query(collection(db, 'roles'), where('role', 'in', ['driver', 'driver_blocked']), limit(300));
   return onSnapshot(
-    collection(db, 'drivers'),
-    (snap) => {
-      const list: DriverProfile[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          name: data.name,
-          phone: data.phone,
-          city: data.city,
-          carBrand: data.carBrand,
-          carModel: data.carModel,
-          carColor: data.carColor || '',
-          carPlate: data.carPlate,
-          carYear: Number(data.carYear) || 2020,
-          licenseNumber: data.licenseNumber,
-          gender: data.gender || 'male',
-          verificationStatus: data.verificationStatus || 'pending',
-          isVerified: data.verificationStatus === 'approved',
-          isOnline: Boolean(data.isOnline),
-          rating: Number(data.rating) || 5.0,
-          totalTrips: Number(data.totalTrips) || 0,
-          balanceKgs: Number(data.balanceKgs) || 0,
-          payoutMbankPhone: data.payoutMbankPhone || data.phone
-        };
-      });
-      onData(list);
-    },
-    (error) => handleFirestoreError(error, OperationType.LIST, path)
+    q,
+    (snap) =>
+      onData(
+        snap.docs.map((d) => {
+          const r = d.data();
+          const [brand, ...model] = String(r.car || '').split(' ');
+          return {
+            id: d.id,
+            name: r.name || 'Водитель',
+            phone: r.payPhone || '',
+            city: 'bishkek' as CityId,
+            carBrand: brand || '',
+            carModel: model.join(' '),
+            carColor: '',
+            carPlate: r.plate || '',
+            carYear: 2020,
+            licenseNumber: '',
+            verificationStatus: r.role === 'driver' ? 'approved' : 'rejected',
+            isVerified: r.role === 'driver',
+            isOnline: false,
+            rating: 5,
+            totalTrips: 0,
+            balanceKgs: 0,
+            payoutMbankPhone: r.payPhone || ''
+          } as DriverProfile;
+        })
+      ),
+    () => onData([])
   );
 }
 
-export async function updateDriverVerificationAdmin(
-  driverId: string,
-  verificationStatus: 'approved' | 'rejected'
-): Promise<void> {
-  const path = `drivers/${driverId}`;
-  try {
-    await updateDoc(doc(db, 'drivers', driverId), {
-      verificationStatus,
-      updatedAt: serverTimestamp()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
+/** Block or unblock a driver (approval of new drivers is in the dispatcher panel). */
+export async function updateDriverVerificationAdmin(driverId: string, status: 'approved' | 'rejected'): Promise<void> {
+  await updateDoc(doc(db, 'roles', driverId), {
+    role: status === 'approved' ? 'driver' : 'driver_blocked',
+    blocked: status !== 'approved'
+  });
 }
 
-// ==================== FLEET SETTINGS ====================
+// ==================== FLEET SETTINGS = config/app commission ====================
 export function subscribeToFleetSettings(onData: (settings: FleetCitySetting[]) => void) {
-  const path = 'fleet_settings';
   return onSnapshot(
-    collection(db, 'fleet_settings'),
+    doc(db, 'config', 'app'),
     (snap) => {
-      const items: FleetCitySetting[] = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          cityId: d.id as CityId,
-          surgeMultiplier: Number(data.surgeMultiplier) || 1.0,
-          commissionPercent: Number(data.commissionPercent) || 12,
-          ladiesModeEnabled: data.ladiesModeEnabled ?? true,
-          biddingEnabled: data.biddingEnabled ?? true
-        };
-      });
-      onData(items);
+      const commission = Number(snap.data()?.commissionPercent) || 14;
+      onData(
+        CITIES.map((c) => ({
+          cityId: c.id as CityId,
+          surgeMultiplier: 1,
+          commissionPercent: commission,
+          ladiesModeEnabled: true,
+          biddingEnabled: false
+        }))
+      );
     },
-    (error) => handleFirestoreError(error, OperationType.LIST, path)
+    () => onData([])
   );
 }
 
 export async function saveFleetCitySettingAdmin(setting: FleetCitySetting): Promise<void> {
-  const path = `fleet_settings/${setting.cityId}`;
-  try {
-    await setDoc(doc(db, 'fleet_settings', setting.cityId), {
-      cityId: setting.cityId,
-      surgeMultiplier: Math.max(0.8, Math.min(3.0, Number(setting.surgeMultiplier) || 1.0)),
-      commissionPercent: Math.max(0, Math.min(35, Number(setting.commissionPercent) || 12)),
-      ladiesModeEnabled: Boolean(setting.ladiesModeEnabled),
-      biddingEnabled: Boolean(setting.biddingEnabled),
-      updatedAt: serverTimestamp()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, path);
-  }
+  await updateDoc(doc(db, 'config', 'app'), {
+    commissionPercent: Math.max(0, Math.min(50, Math.round(setting.commissionPercent))),
+    updatedAt: serverTimestamp()
+  });
 }
+
+export { Timestamp };

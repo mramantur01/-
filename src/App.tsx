@@ -69,13 +69,21 @@ import { PaymentSelector } from './components/Booking/PaymentSelector';
 import { QrPaymentModal } from './components/Booking/QrPaymentModal';
 import { RideOptionsModal } from './components/Booking/RideOptionsModal';
 import { TripCompletedModal } from './components/ActiveTrip/TripCompletedModal';
-import { DriverDashboard } from './components/DriverMode/DriverDashboard';
 import { DriverRegistrationModal } from './components/DriverMode/DriverRegistrationModal';
 import { PassengerProfileModal } from './components/Profile/PassengerProfileModal';
 import { IntercityModal } from './components/Intercity/IntercityModal';
 import { FoodDeliveryModal } from './components/Food/FoodDeliveryModal';
 import { TripHistoryModal } from './components/History/TripHistoryModal';
-import { DispatcherDashboard } from './components/Dispatcher/DispatcherDashboard';
+import { OwnerWebPanel } from './components/Dispatcher/OwnerWebPanel';
+import { watchConfig, AppConfig, DEFAULT_CONFIG, APP_TARIFFS } from './services/ownerService';
+
+/** Site tariff -> app tariff (prices are set by the owner in the dispatcher panel). */
+const SITE_TO_APP_TARIFF: Record<string, string> = {
+  economy: 'econom', together: 'econom', green: 'green_ev', ladies: 'lady', comfort: 'comfort',
+  comfort_plus: 'comfort_plus', business: 'business', hourly: 'hourly', minivan: 'minivan',
+  cargo: 'cargo_15', delivery: 'courier'
+};
+import { DriversLanding } from './components/DriverMode/DriversLanding';
 import { OfflineIndicator } from './components/PWA/PWAInstallButton';
 
 const KG_PLACE_COORDS: Record<string, { lat: number; lng: number }> = {
@@ -447,6 +455,19 @@ export default function App() {
 
     const unsubRide = subscribeToSingleRide(activeFirestoreRideId, (ride) => {
       if (!ride) return;
+      if (ride.status === 'cancelled') {
+        setTripState((prev) => (prev.status === 'completed' ? prev : { ...prev, status: 'idle' as any }));
+        setActiveFirestoreRideId(null);
+        showToast('Заказ отменён');
+        return;
+      }
+      if (ride.driverLat && ride.driverLng && ride.status !== 'searching') {
+        setTripState((prev) =>
+          prev.driver
+            ? { ...prev, driver: { ...prev.driver, position: { ...prev.driver.position, lat: ride.driverLat, lng: ride.driverLng } } }
+            : prev
+        );
+      }
       if (ride.status === 'driver_assigned' && ride.driverName) {
         setTripState((prev) => {
           if (prev.status === 'driver_assigned' || prev.status === 'in_trip' || prev.status === 'completed') {
@@ -459,13 +480,13 @@ export default function App() {
             driver: {
               id: ride.driverUid || 'live_drv',
               name: ride.driverName || 'Водитель KG',
-              rating: ride.driverRating || 4.96,
-              totalTrips: 840,
+              rating: ride.driverRating || 5,
+              totalTrips: 0,
               photoUrl: '',
-              carModel: ride.driverCarModel || 'Toyota Camry',
-              carColor: 'Белый',
-              carPlate: ride.driverCarPlate || '01 KG 777 BSK',
-              phone: '+996 555 00-11-22',
+              carModel: ride.driverCarModel || '',
+              carColor: '',
+              carPlate: ride.driverCarPlate || '',
+              phone: '',
               position: {
                 x: prev.pickup.coords.x + 8,
                 y: prev.pickup.coords.y - 8,
@@ -591,9 +612,25 @@ export default function App() {
     [intermediateStop, realRouteMetrics]
   );
 
-  const plusDiscount = usePlusPoints ? Math.min(passengerProfile.plusPointsBalance || 0, 100) : 0;
+  // Live prices from the owner panel (config/app); the same prices as in the app.
+  const [appConfig, setAppConfig] = useState<AppConfig>(DEFAULT_CONFIG);
+  useEffect(() => (authUser ? watchConfig(setAppConfig) : undefined), [authUser]);
+  const livePrice = useCallback(
+    (siteId: string, fallbackBase: number, fallbackPerKm: number) => {
+      const appId = SITE_TO_APP_TARIFF[siteId];
+      const def = APP_TARIFFS.find((x) => x.id === appId);
+      const cfg = appId ? appConfig.tariffs[appId] : undefined;
+      return {
+        base: cfg?.baseSom ?? def?.base ?? fallbackBase,
+        perKm: cfg?.perKmSom ?? def?.perKm ?? fallbackPerKm
+      };
+    },
+    [appConfig]
+  );
+  // Bonus points and KG One are not live yet: no fake discounts.
+  const plusDiscount = 0;
   const speedMultiplier = pickupSpeedMode === 'wait_save' ? 0.85 : 1;
-  const kgOneMultiplier = passengerProfile.isKgOneMember ? 0.93 : 1;
+  const kgOneMultiplier = 1;
 
   useEffect(() => {
     if (tripState.status !== 'idle') return;
@@ -610,7 +647,8 @@ export default function App() {
     const isHourly = tripState.tariff.id === 'hourly';
     const baseFare = isHourly
       ? hourlyHours * 650 * currentCity.basePriceMultiplier * kgOneMultiplier + priorityBoost
-      : (tripState.tariff.basePrice + dist * tripState.tariff.pricePerKm * currentCity.basePriceMultiplier) *
+      : (livePrice(tripState.tariff.id, tripState.tariff.basePrice, tripState.tariff.pricePerKm).base +
+          dist * livePrice(tripState.tariff.id, tripState.tariff.basePrice, tripState.tariff.pricePerKm).perKm) *
           surgeMultiplier *
           speedMultiplier *
           kgOneMultiplier +
@@ -682,7 +720,7 @@ export default function App() {
       }
       const loadersFee = t.id === 'cargo' ? cargoLoaders * 200 : 0;
       const base =
-        (t.basePrice + dist * t.pricePerKm * currentCity.basePriceMultiplier) *
+        (livePrice(t.id, t.basePrice, t.pricePerKm).base + dist * livePrice(t.id, t.basePrice, t.pricePerKm).perKm) *
           surgeMultiplier *
           speedMultiplier *
           kgOneMultiplier +
@@ -727,7 +765,8 @@ export default function App() {
 
   // Driver search and automatic match (respects Ladies Taxi & Green EV pools)
   useEffect(() => {
-    if (tripState.status !== 'searching') return;
+    // Real orders: a driver from the KG Taxi app takes the order; no simulated drivers.
+    if (tripState.status !== 'searching' || true) return;
 
     const timer = setTimeout(() => {
       const pool =
@@ -758,7 +797,7 @@ export default function App() {
 
   // Bidding Mode: spawn realistic nearby driver counter-offers
   useEffect(() => {
-    if (tripState.status !== 'bidding') return;
+    if (tripState.status !== 'bidding' || true) return;
 
     const pool =
       tripState.tariff.id === 'ladies'
@@ -844,16 +883,14 @@ export default function App() {
     if (tripState.status === 'driver_assigned') {
       const interval = setInterval(() => {
         setTripState((prev) => {
-          if (prev.driverProgress >= 1) {
-            return { ...prev, status: 'driver_arrived', driverProgress: 1 };
-          }
-          return { ...prev, driverProgress: prev.driverProgress + 0.08 };
+          if (prev.driverProgress >= 0.95) return prev;
+          return { ...prev, driverProgress: Math.min(0.95, prev.driverProgress + 0.03) };
         });
       }, 1000);
       return () => clearInterval(interval);
     }
 
-    if (tripState.status === 'driver_arrived') {
+    if (tripState.status === 'driver_arrived' && false) {
       const timeout = setTimeout(() => {
         setTripState((prev) => ({
           ...prev,
@@ -868,14 +905,11 @@ export default function App() {
     if (tripState.status === 'in_trip') {
       const interval = setInterval(() => {
         setTripState((prev) => {
-          if (prev.tripProgress >= 1) {
-            setCompletedTripForModal(prev);
-            return { ...prev, status: 'completed', tripProgress: 1, currentSpeed: 0 };
-          }
+          if (prev.tripProgress >= 0.95) return prev;
           const randomSpeed = Math.floor(Math.random() * 20) + 42;
           return {
             ...prev,
-            tripProgress: prev.tripProgress + 0.06,
+            tripProgress: Math.min(0.95, prev.tripProgress + 0.02),
             currentSpeed: randomSpeed
           };
         });
@@ -936,7 +970,12 @@ export default function App() {
   };
 
   const handleRequestRide = async () => {
-    const nextStatus = pricingMode === 'bidding' ? 'bidding' : 'searching';
+    if (!authUser) {
+      showToast('Войдите через Google, чтобы заказать такси');
+      handleGoogleLogin();
+      return;
+    }
+    const nextStatus = 'searching';
     setSimulatedBids([]);
     setFirestoreBids([]);
     setDeclinedBidIds([]);
@@ -1008,8 +1047,11 @@ export default function App() {
           shareCode
         });
         setActiveFirestoreRideId(fsRideId);
+        showToast('Заказ отправлен водителям KG Taxi');
       } catch (err) {
         console.error('Live ride create error:', err);
+        showToast('Не удалось создать заказ. Проверьте интернет и попробуйте ещё раз.');
+        setTripState((prev) => ({ ...prev, status: 'idle' as any }));
       }
     }
   };
@@ -1471,34 +1513,11 @@ export default function App() {
       <main className="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
         {appMode === 'driver' ? (
           <div className="flex-1 p-4 sm:p-8 overflow-y-auto uber-scroll bg-[#f6f6f6]">
-            <DriverDashboard
-              currentCity={currentCity}
-              driverProfile={driverProfile}
-              lang={lang}
-              liveOpenRides={liveOpenRides}
-              onAcceptLiveRide={handleDriverAcceptLiveRide}
-              onSendCounterBid={handleDriverSendCounterBid}
-              onUpdateLiveRideStatus={handleDriverUpdateRideStatus}
-              onExitDriverMode={() => setAppMode('passenger')}
-              onOpenRegister={() => setIsDriverRegisterOpen(true)}
-            />
+            <DriversLanding onExit={() => setAppMode('passenger')} />
           </div>
         ) : appMode === 'dispatcher' ? (
           <div className="flex-1 p-4 sm:p-8 overflow-y-auto uber-scroll bg-[#f6f6f6]">
-            <DispatcherDashboard
-              cities={CITIES}
-              fleetSettings={fleetSettings}
-              driverApplications={driverApplications}
-              liveRides={allLiveRides}
-              isAdminUser={isAdminUser}
-              onUpdateCitySetting={handleUpdateCitySetting}
-              onApproveDriver={handleApproveDriver}
-              onSelectCityOnMap={(cityId) => {
-                handleSelectCity(cityId);
-                setAppMode('passenger');
-              }}
-              onExitDispatcher={() => setAppMode('passenger')}
-            />
+            <OwnerWebPanel authUser={authUser} onGoogleLogin={handleGoogleLogin} onExit={() => setAppMode('passenger')} />
           </div>
         ) : (
           <>
@@ -1598,7 +1617,7 @@ export default function App() {
                     onChangePricingMode={setPricingMode}
                     offeredFare={offeredFare}
                     onChangeOfferedFare={setOfferedFare}
-                    biddingEnabled={currentCityFleetSetting.biddingEnabled}
+                    biddingEnabled={false}
                     ladiesModeEnabled={currentCityFleetSetting.ladiesModeEnabled}
                     hourlyHours={hourlyHours}
                     onChangeHourlyHours={setHourlyHours}

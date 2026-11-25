@@ -243,9 +243,10 @@ export const BookingForm: React.FC<BookingFormProps> = ({
       ? tariffs.filter((item) => item.id === 'intercity_seat' || item.id === 'minivan' || item.id === 'comfort_plus')
       : tariffs;
 
-  const displayedTariffs = ladiesModeEnabled
+  // "Вместе" (shared ride) is not available in the app yet.
+  const displayedTariffs = (ladiesModeEnabled
     ? baseDisplayedTariffs
-    : baseDisplayedTariffs.filter((item) => item.id !== 'ladies');
+    : baseDisplayedTariffs.filter((item) => item.id !== 'ladies')).filter((item) => item.id !== 'together');
 
   const currentTab = activeServiceCategory();
 
@@ -569,7 +570,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
           }`}
         >
           <Zap className="w-3.5 h-3.5" />
-          <span>{surgeMultiplier > 1 ? `Спрос ×${surgeMultiplier.toFixed(1)}` : 'Пробки 4 б.'}</span>
+          <span>{surgeMultiplier > 1 ? `Спрос ×${surgeMultiplier.toFixed(1)}` : 'Цена фиксируется при заказе'}</span>
         </button>
       </div>
 
@@ -1083,8 +1084,8 @@ export const BookingForm: React.FC<BookingFormProps> = ({
         </div>
       )}
 
-      {/* Compact Plus Points & KG One (Uber One) Row */}
-      <div className="grid grid-cols-2 gap-2">
+      {/* Compact Plus Points & KG One (Uber One) Row — hidden until real bonuses exist */}
+      <div className="hidden grid-cols-2 gap-2">
         <button
           type="button"
           onClick={onToggleUsePlusPoints}

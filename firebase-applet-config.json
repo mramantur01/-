@@ -1,12 +1,10 @@
 {
-  "projectId": "augmented-crowbar-4smzh",
-  "appId": "1:30807645864:web:05b3495432a009fe49ec9d",
-  "apiKey": "AIzaSyDNo86HszwhAo5JTM20AwuFZ3ngEbAkjTg",
-  "authDomain": "augmented-crowbar-4smzh.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-kgtaxi-fae33718-381a-42af-a701-cc6c6bc796d9",
-  "storageBucket": "augmented-crowbar-4smzh.firebasestorage.app",
-  "messagingSenderId": "30807645864",
-  "measurementId": "",
-  "oAuthClientId": "30807645864-pamskv7su37f61hqusass18t24in8fb6.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "gen-lang-client-0409944414",
+  "appId": "1:97349031867:web:8e93a181f935ea0b57969e",
+  "apiKey": "AIzaSyB3J8J_RgPRFPFokOpg-XOKp3Kwvt24sOg",
+  "authDomain": "gen-lang-client-0409944414.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-android-kgtaxi-68b2dabe-46af-41b4-a972-626508d00f13",
+  "storageBucket": "gen-lang-client-0409944414.firebasestorage.app",
+  "messagingSenderId": "97349031867",
+  "measurementId": ""
 }

@@ -162,14 +162,14 @@ export const TopBar: React.FC<TopBarProps> = ({
           className="h-9 px-2.5 rounded-full hover:bg-neutral-800 text-neutral-200 text-xs font-semibold flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
         >
           <Globe className="w-4 h-4" />
-          <span className="uppercase">{lang}</span>
+          <span className="uppercase hidden sm:inline">{lang}</span>
         </button>
 
         <button
           type="button"
           onClick={onOpenHistory}
           title={t.tripHistory}
-          className="h-9 px-2.5 rounded-full hover:bg-neutral-800 text-neutral-200 text-xs font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+          className="hidden sm:flex h-9 px-2.5 rounded-full hover:bg-neutral-800 text-neutral-200 text-xs font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
         >
           <History className="w-4 h-4" />
           <span className="hidden xl:inline">{t.navTrips}</span>
@@ -214,7 +214,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             className="h-9 px-3.5 rounded-full bg-white hover:bg-neutral-200 text-black text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
           >
             <LogIn className="w-4 h-4" />
-            <span>{t.signIn}</span>
+            <span className="hidden sm:inline">{t.signIn}</span>
           </button>
         )}
       </div>

@@ -177,7 +177,7 @@ export const TariffSelector: React.FC<TariffSelectorProps> = ({
                 </div>
 
                 <p className="text-xs text-neutral-500 truncate mt-0.5">
-                  через {t.etaMinutes} мин · {getEtaClock(t.etaMinutes)} · {t.carModels[0]}
+                  подача ~{t.etaMinutes} мин
                 </p>
               </div>
             </div>
