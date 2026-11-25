@@ -63,6 +63,46 @@ export const DriversLanding: React.FC<{ onExit: () => void }> = ({ onExit }) => 
         {requirements.map((r) => <li key={r}>✓ {r}</li>)}
       </ul>
     </div>
+    <InstallHelp />
     <a href="/privacy.html" className="block text-center text-sm text-neutral-500 underline">Политика конфиденциальности</a>
+  </div>
+);
+
+const installProblems: [string, string][] = [
+  [
+    '«Приложение не установлено» или «Пакет конфликтует с существующим»',
+    'На телефоне стоит старая версия KG Taxi из другого источника. Удалите её: Настройки → Приложения → KG Taxi → Удалить. Затем установите заново по кнопке выше.'
+  ],
+  [
+    '«Установка из неизвестных источников запрещена»',
+    'Нажмите «Настройки» в этом окне и включите «Разрешить из этого источника» для браузера (Chrome) или «Файлов». Вернитесь назад и нажмите «Установить».'
+  ],
+  [
+    '«Заблокировано Play Защитой» / «Небезопасное приложение»',
+    'Это обычное предупреждение для приложений не из Google Play. Нажмите «Подробнее» → «Всё равно установить».'
+  ],
+  [
+    'Ссылка открывается внутри Telegram, WhatsApp или Instagram',
+    'Нажмите ⋮ → «Открыть в браузере» (Chrome), и скачайте там. Встроенные браузеры мессенджеров не умеют устанавливать приложения.'
+  ],
+  [
+    'Файл скачался, но ничего не происходит',
+    'Откройте «Файлы» → «Загрузки» и нажмите на KG-Taxi.apk. Если файл весит меньше 20 МБ — скачайте ещё раз, загрузка прервалась.'
+  ]
+];
+
+/** Why the APK may not install on a phone and what to do. */
+export const InstallHelp: React.FC = () => (
+  <div className="bg-white rounded-2xl border border-neutral-200 p-5" id="install-help">
+    <div className="font-bold mb-1">Не устанавливается?</div>
+    <p className="text-sm text-neutral-600 mb-3">Нужен Android 7 или новее. Найдите своё сообщение:</p>
+    <div className="space-y-3">
+      {installProblems.map(([q, a]) => (
+        <details key={q} className="rounded-xl bg-neutral-50 p-3">
+          <summary className="font-semibold text-sm cursor-pointer">{q}</summary>
+          <p className="text-sm text-neutral-700 mt-2">{a}</p>
+        </details>
+      ))}
+    </div>
   </div>
 );
