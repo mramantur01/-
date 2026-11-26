@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const APK_URL = '/kgtaxi.apk';
+export const APK_URL = "/download.html";
 
 const steps = [
   ['Скачайте приложение', 'Установите KG Taxi на Android по кнопке ниже.'],
@@ -34,7 +34,6 @@ export const DriversLanding: React.FC<{ onExit: () => void }> = ({ onExit }) => 
       </p>
       <a
         href={APK_URL}
-        download
         className="inline-block mt-4 px-5 py-3 rounded-2xl bg-white text-black font-bold"
       >
         Скачать приложение для Android

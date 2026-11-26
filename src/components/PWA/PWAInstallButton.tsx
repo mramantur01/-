@@ -6,12 +6,22 @@ export const PWAInstallButton: React.FC<{ variant?: 'dark' | 'light' }> = ({ var
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showGuide, setShowGuide] = useState(false);
 
-  if (isInstalled) return null;
-
   const buttonClass =
     variant === 'dark'
       ? 'h-9 px-3 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0'
       : 'h-9 px-3.5 rounded-full bg-[#eeeeee] hover:bg-[#e2e2e2] text-black text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0';
+
+  // On Android and computers: the real KG Taxi app (APK) instead of a home-screen shortcut.
+  if (!isIOS) {
+    return (
+      <a href="/download.html" className={buttonClass} title="Скачать приложение KG Taxi для Android">
+        <Download className="w-3.5 h-3.5" />
+        <span className="hidden xl:inline">Приложение</span>
+      </a>
+    );
+  }
+
+  if (isInstalled) return null;
 
   if (isInstallable) {
     return (

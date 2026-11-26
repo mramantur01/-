@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Скачать KG Taxi для Android</title>
+<link rel="icon" href="/icon.svg">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f6f6f6; color: #111; }
+  main { max-width: 560px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 28px; margin: 8px 0 4px; }
+  .muted { color: #555; font-size: 15px; }
+  .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 18px; padding: 18px; margin-top: 16px; }
+  .btn { display: block; text-align: center; background: #000; color: #fff; text-decoration: none; font-weight: 700; font-size: 18px; padding: 16px; border-radius: 16px; margin-top: 14px; }
+  .btn.alt { background: #fff; color: #000; border: 1px solid #ccc; font-size: 15px; }
+  .warn { display: none; background: #fff4e5; border: 1px solid #f5c27a; color: #7a4a00; border-radius: 14px; padding: 14px; margin-top: 14px; font-size: 15px; }
+  ol { padding-left: 20px; margin: 8px 0 0; } li { margin: 8px 0; }
+  details { background: #f6f6f6; border-radius: 12px; padding: 12px; margin-top: 10px; }
+  summary { font-weight: 600; cursor: pointer; }
+  details p { margin: 8px 0 0; font-size: 15px; }
+  .small { font-size: 13px; color: #666; }
+</style>
+</head>
+<body>
+<main>
+  <a href="/" class="small">← KG Taxi</a>
+  <h1>KG Taxi для Android</h1>
+  <p class="muted">Такси и межгород по Кыргызстану. Приложение для пассажиров и водителей.</p>
+
+  <div class="warn" id="inapp">
+    Вы открыли ссылку внутри мессенджера. Отсюда приложение не установится.<br>
+    Нажмите <b>⋮</b> или <b>…</b> вверху → <b>«Открыть в браузере»</b>, или кнопку ниже.
+    <a class="btn alt" id="chrome" href="#">Открыть в Chrome</a>
+  </div>
+  <div class="warn" id="ios">KG Taxi пока только для Android. На iPhone закажите такси на сайте: <a href="/">mramantur-site.vercel.app</a>.</div>
+
+  <div class="card">
+    <a class="btn" id="dl" href="/kgtaxi.apk" download="KG-Taxi.apk">Скачать приложение (25 МБ)</a>
+    <p class="small" style="margin-top:10px">Версия <span id="ver">1.9</span> • Android 7 и новее</p>
+  </div>
+
+  <div class="card">
+    <b>Как установить</b>
+    <ol>
+      <li>Нажмите «Скачать». Если Chrome спросит — нажмите «Всё равно скачать».</li>
+      <li>Откройте скачанный файл <b>KG-Taxi.apk</b> (в уведомлении или в «Файлы» → «Загрузки»).</li>
+      <li>Если появится «Установка запрещена» — нажмите «Настройки» и включите «Разрешить из этого источника», вернитесь назад.</li>
+      <li>Нажмите «Установить». Готово — войдите через Google.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <b>Не устанавливается?</b>
+    <details><summary>«Приложение не установлено» / «Пакет конфликтует»</summary>
+      <p>На телефоне уже есть старая версия KG Taxi из другого источника. Удалите её: Настройки → Приложения → KG Taxi → Удалить, и установите снова.</p></details>
+    <details><summary>«Заблокировано Play Защитой»</summary>
+      <p>Обычное предупреждение для приложений не из Google Play. Нажмите «Подробнее» → «Всё равно установить».</p></details>
+    <details><summary>«Установка из неизвестных источников запрещена»</summary>
+      <p>Нажмите «Настройки» в этом окне и включите «Разрешить из этого источника» для Chrome или «Файлов».</p></details>
+    <details><summary>Xiaomi / Redmi / POCO</summary>
+      <p>Если просит «проверить приложение» — нажмите «Установить всё равно». В Настройки → Конфиденциальность → Особые разрешения → «Неизвестные источники» разрешите Chrome.</p></details>
+    <details><summary>«Ошибка синтаксического анализа пакета»</summary>
+      <p>Файл скачался не полностью. Удалите его из «Загрузок» и скачайте ещё раз по Wi-Fi.</p></details>
+    <details><summary>Ссылка открылась в Telegram / WhatsApp / Instagram</summary>
+      <p>Откройте её в Chrome: ⋮ → «Открыть в браузере».</p></details>
+  </div>
+
+  <p class="small" style="text-align:center;margin-top:20px"><a href="/privacy.html">Политика конфиденциальности</a></p>
+</main>
+<script>
+  (function () {
+    var ua = navigator.userAgent || '';
+    var inApp = /Telegram|WhatsApp|Instagram|FBAN|FBAV|FB_IAB|Line\/|MicroMessenger|VKClient|OKApp|; wv\)/i.test(ua);
+    var android = /Android/i.test(ua);
+    var ios = /iPhone|iPad|iPod/i.test(ua);
+    if (inApp && android) {
+      document.getElementById('inapp').style.display = 'block';
+      document.getElementById('chrome').href =
+        'intent://' + location.host + '/download.html#Intent;scheme=https;package=com.android.chrome;end';
+    }
+    if (ios) document.getElementById('ios').style.display = 'block';
+    fetch('/version.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (v) {
+      if (v && v.versionName) document.getElementById('ver').textContent = v.versionName;
+    }).catch(function () {});
+  })();
+</script>
+</body>
+</html>
